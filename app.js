@@ -50,7 +50,9 @@ app.post('/auth', function(request, response) {
 		connection.query('SELECT * FROM users WHERE username = ? AND pass = ?', [username, md5(password)], function(error, results, fields) {
 			if (results.length > 0) {
                 console.log("Authorised")
-				request.session.loggedin = true;
+                console.log(JSON.stringify(results[0]))
+                request.session.loggedin = true;
+                request.session.userid = results[0].ID
 				request.session.username = username;
 				response.redirect(frontend_home+'/inbox');
 			} else {
@@ -70,6 +72,33 @@ app.get('/whoami', function(request, response){
     console.log("whoareyou? ", request.session.username)
     response.send(JSON.stringify({username: request.session.username || "none"}));
     response.end();
+})
+
+app.get('/messages', function(request, response){
+    if((!request.session.username) || (!request.session.userid)){
+        response.send("Please log in")
+        response.end()
+        return;
+    }
+    console.log("getting messages for ", request.session.username, " userid ", request.session.userid)
+    connection.query(
+        'SELECT users.username, messages.content, messages.timestamp FROM \
+        users INNER JOIN messages \
+        ON users.ID = messages.from \
+        WHERE messages.to = ?', [request.session.userid], 
+        function(error, results, fields){
+        if (!error && results.length > 0){
+            console.log("Found "+results.length+" messages")
+            response.send(JSON.stringify(results))
+            response.end()
+            return
+        } else{
+            console.log("Error getting messages")
+            response.send("[]")
+            response.end()
+            return
+        }
+    })
 })
 
 app.listen(process.env.PORT || 5000);
