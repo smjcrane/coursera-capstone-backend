@@ -9,12 +9,13 @@ var cors = require('cors');
 
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
 
+const frontend_home = 'https://simon-security-capstone.herokuapp.com';
 var app = express();
 
 var corsOptions = {
     origin: function (origin, callback) {
         console.log("request from origin ", origin);
-      if (origin == 'https://simon-security-capstone.herokuapp.com') {
+      if (origin == frontend_home) {
         callback(null, true)
       } else {
         callback(new Error('Not allowed by CORS'))
@@ -51,7 +52,7 @@ app.post('/auth', function(request, response) {
                 console.log("Authorised")
 				request.session.loggedin = true;
 				request.session.username = username;
-				response.redirect('/');
+				response.redirect(frontend_home+'/inbox');
 			} else {
                 console.log("Not authorised")
 				response.send('Incorrect Username and/or Password!');
@@ -63,16 +64,6 @@ app.post('/auth', function(request, response) {
 		response.send('Please enter Username and Password!');
 		response.end();
 	}
-});
-
-app.get('/home', function(request, response) {
-    console.log("getting home")
-	if (request.session.loggedin) {
-		response.send('Welcome back, ' + request.session.username + '!');
-	} else {
-		response.send('Please login to view this page!');
-	}
-	response.end();
 });
 
 app.listen(process.env.PORT || 5000);
