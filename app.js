@@ -15,7 +15,7 @@ var app = express();
 var corsOptions = {
     origin: function (origin, callback) {
         console.log("request from origin ", origin);
-      if (origin == frontend_home) {
+      if (origin.substring(0, frontend_home.length) == frontend_home) {
         callback(null, true)
       } else {
         callback(new Error('Not allowed by CORS'))
@@ -56,7 +56,7 @@ app.post('/auth', function(request, response) {
 			} else {
                 console.log("Not authorised")
 				response.send('Incorrect Username and/or Password!');
-			}			
+			}
 			response.end();
 		});
 	} else {
@@ -65,5 +65,11 @@ app.post('/auth', function(request, response) {
 		response.end();
 	}
 });
+
+app.get('/whoami', function(request, response){
+    console.log("whoareyou? ", request.session.username)
+    response.send(request.session.username);
+    response.end();
+})
 
 app.listen(process.env.PORT || 5000);
