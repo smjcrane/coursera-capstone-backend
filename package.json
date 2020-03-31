@@ -1,0 +1,19 @@
+{
+  "name": "simon-capstone-backend",
+  "version": "1.0.0",
+  "description": "for coursera",
+  "main": "connect.js",
+  "scripts": {
+    "test": "test"
+  },
+  "author": "simon crane",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "express-session": "^1.17.0",
+    "mysql": "^2.18.1"
+  },
+  "engines": {
+    "node": "10.15.0"
+  }
+}
