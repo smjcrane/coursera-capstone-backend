@@ -5,10 +5,22 @@ var bodyParser = require('body-parser');
 var path = require('path');
 const crypto = require('crypto')
 var connection = require('./connect.js').connection
+var cors = require('cors');
 
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
 
 var app = express();
+
+var corsOptions = {
+    origin: function (origin, callback) {
+        console.log("request from origin ", origin);
+      if (origin == 'https://simon-security-capstone.herokuapp.com') {
+        callback(null, true)
+      } else {
+        callback(new Error('Not allowed by CORS'))
+      }
+    }
+  }
 
 app.use(session({
     cookie: {maxAge: 86400000},
@@ -21,15 +33,16 @@ app.use(session({
 }));
 app.use(bodyParser.urlencoded({extended : true}));
 app.use(bodyParser.json());
+app.use(cors(corsOptions))
 
 app.get('/', function(request, response) {
-    console.log("hello", request)
+    console.log("hello")
     response.send("Hello world");
     response.end();
 });
 
 app.post('/auth', function(request, response) {
-    console.log(request)
+    console.log("auth requested for user  ", request.body.username);
 	var username = request.body.username;
 	var password = request.body.password;
 	if (username && password) {
