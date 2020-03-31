@@ -1,17 +1,20 @@
 var express = require('express');
 var session = require('express-session');
+var MemoryStore = require('memorystore')(session)
 var bodyParser = require('body-parser');
 var path = require('path');
 const crypto = require('crypto')
 var connection = require('./connect.js').connection
 
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
-console.log(md5("did you ever see a penguin come to tea"))
-
 
 var app = express();
 
 app.use(session({
+    cookie: {maxAge: 86400000},
+    store: new MemoryStore({
+        checkPeriod: 86400000
+    }),
 	secret: 'secret',
 	resave: true,
 	saveUninitialized: true

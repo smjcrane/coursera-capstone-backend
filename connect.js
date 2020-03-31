@@ -1,4 +1,12 @@
-var config = require("./config.json");
+var config = {
+    host: process.env.HOST,
+    user: process.env.USER,
+    password: process.env.PASS,
+    port: process.env.DBPORT,
+    database: process.env.DATABASE,
+}
+
+console.log(config)
 
 
 var mysql = require('mysql');
