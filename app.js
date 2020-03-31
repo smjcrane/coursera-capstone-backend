@@ -12,16 +12,16 @@ let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
 const frontend_home = 'https://simon-security-capstone.herokuapp.com';
 var app = express();
 
-var corsOptions = {
-    origin: function (origin, callback) {
+var corsOptions = function (request, callback) {
+    origin = request.header("Origin") || "no";
         console.log("request from origin ", origin);
       if (origin.substring(0, frontend_home.length) == frontend_home) {
-        callback(null, true)
+        callback(null, {origin: true, credentials: true})
       } else {
         callback(new Error('Not allowed by CORS'))
       }
     }
-  }
+  
 
 app.use(session({
     cookie: {maxAge: 86400000},
@@ -68,7 +68,7 @@ app.post('/auth', function(request, response) {
 
 app.get('/whoami', function(request, response){
     console.log("whoareyou? ", request.session.username)
-    response.send(request.session.username);
+    response.send(JSON.stringify({username: request.session.username || "none"}));
     response.end();
 })
 
