@@ -23,10 +23,13 @@ app.use(bodyParser.urlencoded({extended : true}));
 app.use(bodyParser.json());
 
 app.get('/', function(request, response) {
-	response.sendFile(path.join(__dirname + '/login.html'));
+    console.log("hello", request)
+    response.send("Hello world");
+    response.end();
 });
 
 app.post('/auth', function(request, response) {
+    console.log(request)
 	var username = request.body.username;
 	var password = request.body.password;
 	if (username && password) {
@@ -35,7 +38,7 @@ app.post('/auth', function(request, response) {
                 console.log("Authorised")
 				request.session.loggedin = true;
 				request.session.username = username;
-				response.redirect('/home');
+				response.redirect('/');
 			} else {
                 console.log("Not authorised")
 				response.send('Incorrect Username and/or Password!');
@@ -49,7 +52,6 @@ app.post('/auth', function(request, response) {
 	}
 });
 
-
 app.get('/home', function(request, response) {
     console.log("getting home")
 	if (request.session.loggedin) {
@@ -60,5 +62,4 @@ app.get('/home', function(request, response) {
 	response.end();
 });
 
-
-app.listen(3000);
+app.listen(process.env.PORT || 5000);
