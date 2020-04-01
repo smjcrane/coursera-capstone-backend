@@ -114,7 +114,7 @@ app.get('/messages', function(request, response){
                 from: m.username,
                 to: request.session.username,
                 content: decrypt(m.content),
-                timestamp: decrypt(m.time),
+                timestamp: m.time,
             }})
             response.send(JSON.stringify(results))
             response.end()
@@ -137,6 +137,7 @@ app.post("/send", function(request, response){
     var contents = request.body.content;
     console.log("Sending message ["+contents+"] to user "+to_user)
     if((!request.session.username) || (!request.session.userid)){
+        console.log("send failed: not logged in")
         response.send("Please log in")
         response.end()
         return;
@@ -157,6 +158,7 @@ app.post("/send", function(request, response){
     let to_id = -1;
     connection.query("SELECT * FROM users WHERE USERNAME=?", [to_user], function(err, res, fields){
         if (err || !res || res.length < 1){
+            console.log("recipient does not exist")
             response.send("Error finding user")
             response.status(422)
             response.end();
@@ -168,12 +170,15 @@ app.post("/send", function(request, response){
             request.session.userid,
             to_id,
             encrypt(contents),
-            encrypt(new Date().getTime())
+            new Date().getTime(),
         ], function(err, res, fields){
             if (err){
+                console.log("Error saving message")
                 response.send("Error saving message")
                 response.status(500)
                 response.end()
+            } else{
+                console.log("Success! Message sent")
             }
         })
     })
