@@ -17,7 +17,7 @@ let decrypt = (text) => CryptoJS.AES.decrypt(text, AES_key).toString(CryptoJS.en
 const frontend_home = 'https://simon-security-capstone.herokuapp.com';
 var app = express();
 
-var corsOptions = function (request, callback) {
+const corsOptions = function (request, callback) {
     origin = request.header("Origin") || "no";
     console.log("request from origin ", origin);
     if (origin.substring(0, frontend_home.length) == frontend_home) {
@@ -36,6 +36,9 @@ const apiLimiter2 = rateLimit({
     windowMs: 1000 * 60 * 15,
     max: 10
 })
+
+const usernameRegex = /^[A-Za-z0-9_]{3,30}$/
+const messageRegex = /^[A-Za-z0-9 ]{1,999}$/
   
 app.use(apiLimiter)
 
@@ -133,6 +136,52 @@ app.get('/messages', function(request, response){
 
 app.post("/logout", function (request, response){
     request.session.destroy();
+})
+
+app.post("/send", function(request, response){
+    var to_user = request.body.to_user;
+    var contents = request.body.content;
+    console.log("Sending message ["+contents+"] to user "+to_user)
+    if((!request.session.username) || (!request.session.userid)){
+        response.send("Please log in")
+        response.end()
+        return;
+    }
+    if ((!to_user || !contents)){
+        console.log("No addressee or no message")
+        response.status(400)
+		response.send('Please send the addressees username and the message');
+        response.end();    
+    }
+    if (!usernameRegex.test(to_user) || !messageRegex.test(contents)){
+        console.log("Malformed username or message")
+        response.status(400)
+        response.send('Usernames should be between 3 and 30 alphanumeric characters, \
+         messages between 1 and 999 alphanumeric characters and spaces');
+        response.end();  
+    }
+    let to_id = -1;
+    connection.query("SELECT * FROM users WHERE USERNAME=?", [to_user], function(err, res, fields){
+        if (err || !res || res.length < 1){
+            response.send("Error finding user")
+            response.status(422)
+            response.end();
+            return;
+        }
+        to_id = res[0].ID
+        connection.query("INSERT INTO messages (`FROM`, `TO`, `CONTENT`) VALUES (?, ?, ?)", 
+        [
+            request.session.userid,
+            to_id,
+            encrypt(contents)
+        ], function(err, res, fields){
+            if (err){
+                response.send("Error saving message")
+                response.status(500)
+                response.end()
+            }
+        })
+    })
 })
 
 app.listen(process.env.PORT || 5000);
