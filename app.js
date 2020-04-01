@@ -28,7 +28,7 @@ app.use(session({
     store: new MemoryStore({
         checkPeriod: 86400000
     }),
-	secret: 'secret',
+	secret: 'secr83kcuby4bl7sq5wffdypijaem3oncqet',
 	resave: true,
 	saveUninitialized: true
 }));
@@ -44,19 +44,21 @@ app.get('/', function(request, response) {
 
 app.post('/auth', function(request, response) {
     console.log("auth requested for user  ", request.body.username);
+    console.log(request.session)
 	var username = request.body.username;
-	var password = request.body.password;
+    var password = request.body.password;
+    console.log("check", username+password, md5(username+password));
 	if (username && password) {
-		connection.query('SELECT * FROM users WHERE username = ? AND pass = ?', [username, md5(password)], function(error, results, fields) {
+		connection.query('SELECT * FROM users WHERE username = ? AND pass = ?', [username, md5(username+password)], function(error, results, fields) {
 			if (results.length > 0) {
                 console.log("Authorised")
-                console.log(JSON.stringify(results[0]))
                 request.session.loggedin = true;
                 request.session.userid = results[0].ID
 				request.session.username = username;
-				response.redirect(frontend_home+'/inbox');
+				response.send("Success!");
 			} else {
                 console.log("Not authorised")
+                response.status(401)
 				response.send('Incorrect Username and/or Password!');
 			}
 			response.end();
@@ -70,11 +72,14 @@ app.post('/auth', function(request, response) {
 
 app.get('/whoami', function(request, response){
     console.log("whoareyou? ", request.session.username)
+    console.log(request.session)
     response.send(JSON.stringify({username: request.session.username || "none"}));
     response.end();
 })
 
 app.get('/messages', function(request, response){
+    console.log("getting messages")
+    console.log(request.session)
     if((!request.session.username) || (!request.session.userid)){
         response.send("Please log in")
         response.end()
@@ -82,7 +87,7 @@ app.get('/messages', function(request, response){
     }
     console.log("getting messages for ", request.session.username, " userid ", request.session.userid)
     connection.query(
-        'SELECT users.username, messages.content, messages.timestamp FROM \
+        'SELECT users.username, messages.content, messages.time FROM \
         users INNER JOIN messages \
         ON users.ID = messages.from \
         WHERE messages.to = ?', [request.session.userid], 
@@ -99,6 +104,10 @@ app.get('/messages', function(request, response){
             return
         }
     })
+})
+
+app.post("/logout", function (request, response){
+    request.session.destroy();
 })
 
 app.listen(process.env.PORT || 5000);
