@@ -195,6 +195,8 @@ app.post("/send", function(request, response){
                 response.end()
             } else{
                 console.log("Success! Message sent")
+                response.send("Success!")
+                response.end()
             }
         })
     })
