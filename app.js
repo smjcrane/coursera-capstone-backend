@@ -4,22 +4,20 @@ var MemoryStore = require('memorystore')(session)
 var bodyParser = require('body-parser');
 var path = require('path');
 const crypto = require('crypto')
-var CryptoJS = require("crypto-js");
 var connection = require('./connect.js').connection
 var cors = require('cors');
 const rateLimit = require("express-rate-limit")
-
+var ncrypt = require("ncrypt-js");
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
+
 const AES_key = process.env.AES_KEY;
-let encrypt = (text) => CryptoJS.AES.encrypt(text, AES_key).toString();
-let decrypt = (text) => CryptoJS.AES.decrypt(text, AES_key).toString(CryptoJS.enc.Utf8);
+let {encrypt, decrypt} = new ncrypt(process.env.AES_KEY)
 
 const frontend_home = 'https://simon-security-capstone.herokuapp.com';
 var app = express();
 
 const corsOptions = function (request, callback) {
     origin = request.header("Origin") || "no";
-    console.log("request from origin ", origin);
     if (origin.substring(0, frontend_home.length) == frontend_home) {
         callback(null, {origin: true, credentials: true})
     } else {
@@ -37,7 +35,7 @@ const apiLimiter2 = rateLimit({
     max: 10
 })
 
-const usernameRegex = /^[A-Za-z0-9_]{3,30}$/
+const usernameRegex = /^[A-Za-z0-9]{3,30}$/
 const messageRegex = /^[A-Za-z0-9 ]{1,999}$/
   
 app.use(apiLimiter)
@@ -65,10 +63,8 @@ app.use('/auth', apiLimiter2)
 
 app.post('/auth', function(request, response) {
     console.log("auth requested for user  ", request.body.username);
-    console.log(request.session)
 	var username = request.body.username;
     var password = request.body.password;
-    console.log("check", username+password, md5(username+password));
 	if (username && password) {
 		connection.query('SELECT * FROM users WHERE username = ? AND pass = ?', [username, md5(username+password)], function(error, results, fields) {
 			if (results.length > 0) {
@@ -94,14 +90,11 @@ app.post('/auth', function(request, response) {
 
 app.get('/whoami', function(request, response){
     console.log("whoareyou? ", request.session.username)
-    console.log(request.session)
     response.send(JSON.stringify({username: request.session.username || "none"}));
     response.end();
 })
 
 app.get('/messages', function(request, response){
-    console.log("getting messages")
-    console.log(request.session)
     if((!request.session.username) || (!request.session.userid)){
         response.send("Please log in")
         response.end()
@@ -114,8 +107,9 @@ app.get('/messages', function(request, response){
         ON users.ID = messages.from \
         WHERE messages.to = ?', [request.session.userid], 
         function(error, results, fields){
-        if (!error && results.length > 0){
+        if (!error){
             console.log("Found "+results.length+" messages")
+            console.log(results)
             results = results.map(m => {return {
                 from: m.username,
                 to: request.session.username,
