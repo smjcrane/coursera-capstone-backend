@@ -119,6 +119,13 @@ app.post('/register', function(request, response){
         response.end(); 
         return;
     }
+    connection.query("SELECT * FROM users WHERE USERNAME=?", [request.body.username], function(err, res, fields){
+        if (res && res.length > 0){
+            response.status(409) //conflict
+            response.send("User already exists")
+            response.end()
+        }
+    })
     connection.query("INSERT INTO users (USERNAME, PASS) VALUES (?, ?)", [
         request.body.username,
         md5(request.body.username+request.body.password)
@@ -130,9 +137,7 @@ app.post('/register', function(request, response){
             response.end()
             return;
         }
-        request.session.username = request.body.username;
-        request.session.userid = res[0].ID;
-        console.log("Account created successfully "+res[0])
+        console.log("Account created successfully")
         response.send("Account created")
         response.end()
     })
