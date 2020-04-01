@@ -55,7 +55,7 @@ app.post('/auth', function(request, response) {
                 request.session.loggedin = true;
                 request.session.userid = results[0].ID
                 request.session.username = username;
-				// response.send("Success!");
+				response.send("Success!");
 			} else {
                 console.log("Not authorised")
                 response.status(401)
@@ -65,6 +65,7 @@ app.post('/auth', function(request, response) {
 		});
 	} else {
         console.log("Bad request")
+        response.status(400)
 		response.send('Please enter Username and Password!');
 		response.end();
 	}
