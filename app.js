@@ -7,11 +7,26 @@ const crypto = require('crypto')
 var connection = require('./connect.js').connection
 var cors = require('cors');
 const rateLimit = require("express-rate-limit")
-var ncrypt = require("ncrypt-js");
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
 
-const AES_key = process.env.AES_KEY;
-let {encrypt, decrypt} = new ncrypt(process.env.AES_KEY)
+const AES_key = Buffer.from(process.env.AES_KEY, "hex");
+
+function encrypt(text) {
+    let iv = crypto.randomBytes(16)
+    let cipher = crypto.createCipheriv('aes-256-cbc', AES_key, iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return { iv: iv.toString('hex'), encryptedData: encrypted.toString('hex') };
+}
+   
+function decrypt(iv, text) {
+    iv = Buffer.from(iv, 'hex');
+    let encryptedText = Buffer.from(text, 'hex');
+    let decipher = crypto.createDecipheriv('aes-256-cbc', AES_key, iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+}
 
 const frontend_home = 'https://simon-security-capstone.herokuapp.com';
 var app = express();
@@ -102,18 +117,17 @@ app.get('/messages', function(request, response){
     }
     console.log("getting messages for ", request.session.username, " userid ", request.session.userid)
     connection.query(
-        'SELECT users.username, messages.content, messages.time FROM \
+        'SELECT users.username, messages.content, messages.time, messages.IV FROM \
         users INNER JOIN messages \
         ON users.ID = messages.from \
         WHERE messages.to = ?', [request.session.userid], 
         function(error, results, fields){
         if (!error){
             console.log("Found "+results.length+" messages")
-            console.log(results)
             results = results.map(m => {return {
                 from: m.username,
                 to: request.session.username,
-                content: decrypt(m.content),
+                content: decrypt(m.IV, m.content),
                 timestamp: m.time,
             }})
             response.send(JSON.stringify(results))
@@ -165,11 +179,13 @@ app.post("/send", function(request, response){
             return;
         }
         to_id = res[0].ID
-        connection.query("INSERT INTO messages (`FROM`, `TO`, `CONTENT`, `TIME`) VALUES (?, ?, ?, ?)", 
+        encrypted = encrypt(contents)
+        connection.query("INSERT INTO messages (`FROM`, `TO`, `CONTENT`, `IV`, `TIME`) VALUES (?, ?, ?, ?, ?)", 
         [
             request.session.userid,
             to_id,
-            encrypt(contents),
+            encrypted.encryptedData,
+            encrypted.iv,
             new Date().getTime(),
         ], function(err, res, fields){
             if (err){
