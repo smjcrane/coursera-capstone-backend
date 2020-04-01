@@ -163,11 +163,12 @@ app.post("/send", function(request, response){
             return;
         }
         to_id = res[0].ID
-        connection.query("INSERT INTO messages (`FROM`, `TO`, `CONTENT`) VALUES (?, ?, ?)", 
+        connection.query("INSERT INTO messages (`FROM`, `TO`, `CONTENT`, `TIME`) VALUES (?, ?, ?, ?)", 
         [
             request.session.userid,
             to_id,
-            encrypt(contents)
+            encrypt(contents),
+            encrypt(new Date().getTime())
         ], function(err, res, fields){
             if (err){
                 response.send("Error saving message")
