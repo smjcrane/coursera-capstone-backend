@@ -4,24 +4,40 @@ var MemoryStore = require('memorystore')(session)
 var bodyParser = require('body-parser');
 var path = require('path');
 const crypto = require('crypto')
+var CryptoJS = require("crypto-js");
 var connection = require('./connect.js').connection
 var cors = require('cors');
+const rateLimit = require("express-rate-limit")
 
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
+const AES_key = process.env.AES_KEY;
+let encrypt = (text) => CryptoJS.AES.encrypt(text, AES_key).toString();
+let decrypt = (text) => CryptoJS.AES.decrypt(text, AES_key).toString(CryptoJS.enc.Utf8);
 
 const frontend_home = 'https://simon-security-capstone.herokuapp.com';
 var app = express();
 
 var corsOptions = function (request, callback) {
     origin = request.header("Origin") || "no";
-        console.log("request from origin ", origin);
-      if (origin.substring(0, frontend_home.length) == frontend_home) {
+    console.log("request from origin ", origin);
+    if (origin.substring(0, frontend_home.length) == frontend_home) {
         callback(null, {origin: true, credentials: true})
-      } else {
+    } else {
         callback(new Error('Not allowed by CORS'))
-      }
     }
+}
+
+const apiLimiter = rateLimit({
+    windowMs: 1000 * 60 * 10,
+    max: 100
+})
+
+const apiLimiter2 = rateLimit({
+    windowMs: 1000 * 60 * 15,
+    max: 10
+})
   
+app.use(apiLimiter)
 
 app.use(session({
     cookie: {maxAge: 86400000},
@@ -41,6 +57,8 @@ app.get('/', function(request, response) {
     response.send("Hello world");
     response.end();
 });
+
+app.use('/auth', apiLimiter2)
 
 app.post('/auth', function(request, response) {
     console.log("auth requested for user  ", request.body.username);
@@ -95,6 +113,12 @@ app.get('/messages', function(request, response){
         function(error, results, fields){
         if (!error && results.length > 0){
             console.log("Found "+results.length+" messages")
+            results = results.map(m => {return {
+                from: m.username,
+                to: request.session.username,
+                content: decrypt(m.content),
+                timestamp: decrypt(m.time),
+            }})
             response.send(JSON.stringify(results))
             response.end()
             return
