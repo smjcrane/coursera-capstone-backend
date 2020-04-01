@@ -103,6 +103,41 @@ app.post('/auth', function(request, response) {
 	}
 });
 
+app.post('/register', function(request, response){
+    console.log("creating account ["+request.body.username+"]");
+    if (!request.body.username || !request.body.password){
+        console.log("Bad request")
+        response.status(400)
+		response.send('Please provide Username and Password');
+        response.end();
+        return;
+    }
+    if (!usernameRegex.test(request.body.username)){
+        console.log("Malformed username")
+        response.status(400)
+        response.send('Usernames should be between 3 and 30 alphanumeric characters');
+        response.end(); 
+        return;
+    }
+    connection.query("INSERT INTO users (USERNAME, PASS) VALUES (?, ?)", [
+        request.body.username,
+        md5(request.body.username+request.body.password)
+    ], function(err, res, fields){
+        if (err){
+            console.log("Failed to create user")
+            response.status(500);
+            response.send("Failed to create user")
+            response.end()
+            return;
+        }
+        request.session.username = request.body.username;
+        request.session.userid = res[0].ID;
+        console.log("Account created successfully "+res[0])
+        response.send("Account created")
+        response.end()
+    })
+})
+
 app.get('/whoami', function(request, response){
     console.log("whoareyou? ", request.session.username)
     response.send(JSON.stringify({username: request.session.username || "none"}));
