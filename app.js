@@ -35,6 +35,7 @@ const frontend_home = 'https://simon-security-capstone.herokuapp.com';
 var app = express();
 
 const corsOptions = function (request, callback) {
+    console.log(request.header("Origin"))
     origin = request.header("Origin") || "no";
     if (origin.substring(0, frontend_home.length) == frontend_home) {
         callback(null, {origin: true, credentials: true})
@@ -45,7 +46,7 @@ const corsOptions = function (request, callback) {
 
 const apiLimiter = rateLimit({
     windowMs: 1000 * 60 * 10,
-    max: 100
+    max: 1000
 })
 
 const apiLimiter2 = rateLimit({
@@ -62,7 +63,7 @@ app.use(apiLimiter)
 app.use(session({
     cookie: {
         maxAge: 86400000,
-        secure: true,
+        //secure: true,
         sameSite: "none"
     },
     store: new MemoryStore({
@@ -92,7 +93,7 @@ app.post('/auth', function(request, response) {
 		connection.query('SELECT ID FROM users WHERE username = ? AND pass = ?', [username, md5(username+password)], function(error, results, fields) {
 			if (results.length > 0) {
                 console.log("Authorised")
-                request.session.loggedin = true;
+                console.log(results)
                 request.session.userid = results[0].ID
                 request.session.username = username;
 				response.send("Success!");
@@ -194,7 +195,7 @@ app.get('/whoami', function(request, response){
 })
 
 
-function getMessages(connection, to_id){
+function getMessages(connection, to_id, to_name, callback){
     connection.query(
         'SELECT users.username, messages.content, messages.time, messages.IV FROM \
         users INNER JOIN messages \
@@ -205,13 +206,14 @@ function getMessages(connection, to_id){
             console.log("Found "+results.length+" messages")
             results = results.map(m => {return {
                 from: m.username,
-                to: request.session.username,
+                to: to_name,
                 content: decrypt(m.IV, m.content),
                 timestamp: m.time,
             }})
-            return results
+            console.log("Processed the messages")
+            callback(results)
         } else{
-            return []
+            callback([])
         }
     })
 }
@@ -223,9 +225,11 @@ app.get('/messages', function(request, response){
         return;
     }
     console.log("getting messages for ", request.session.username, " userid ", request.session.userid)
-    messages = getMessages(connection, request.session.userid);
-    response.send(messages)
-    response.end()
+    getMessages(connection, request.session.userid, request.session.username, messages =>{
+        console.log("sending", messages)
+        response.send(JSON.stringify(messages))
+        response.end()
+    });
 })
 
 app.post("/logout", function (request, response){
@@ -299,19 +303,30 @@ function addMessage(connection, from_id, to_id, contents, callback){
     ], callback)
 }
 
-app.post('/sendresetcode', function(req, res){
-    // check if logged in
+
+app.use('/sendresetcode', apiLimiter2);
+app.post('/sendresetcode', function(request, response){
     if (!request.body.username){
         console.log("password reset failed: no username specified")
+        response.status(400) // bad request
         response.send("Please specify a username")
         response.end()
         return;
     }
-    getPhone(num => {
-    crypto.randomBytes(4, function(ex, buf) {
-        token = buf.toString('hex');
-        putToken(connection, request.session.userid)
-        sendSMS(num, "Your password reset token is "+token);
+    getPhone((err, num) => {
+        if(err){
+            response.status(500) // internal server error
+            response.send("Couldn't find phone number")
+            response.end()
+            return;
+        }
+        crypto.randomBytes(4, function(ex, buf) {
+            token = buf.toString('hex');
+            putToken(connection, request.session.userid)
+            sendSMS(num, "Your password reset token is "+token);
+        })
+        response.send("Reset token sent")
+        response.end()
     })
 })
 
@@ -319,9 +334,10 @@ function getPhone(connection, userid, callback){
     connection.query("SELECT PHONE, phoneIV FROM users WHERE ID=?", [userid], function(err, res, fields){
         if (err || !res || !res.length){
             console.log("Couldn't get phone number")
+            callback(new Error(), -1)
         } else {
             let num = decrypt(res[0].phoneIV, res[0].PHONE);
-            callback(num)
+            callback(null, num)
         }
     })
 }
@@ -331,5 +347,60 @@ function putToken(connection, userid, token, callback){
     connection.query("UPDATE users SET RESET=?, RESET_IV=? WHERE ID=?", 
     [e.encryptedData, e.iv, userid], callback)
 }
+
+function getToken(connection, userid, callback){
+    connection.query("SELCT RESET, RESET_IV FROM users WHERE ID=?", [userid], function(err, res, fields){
+        if (err || !res || !res.length){
+            callback(new Error())
+        } else {
+            token = decrypt(res[0].RESET_IV, res[0].RESET)
+            callback(null, token)
+        }
+    })
+}
+
+app.use('/resetwithcode', apiLimiter2)
+app.post('/resetwithcode', function(req, res){
+    if (!req.body.username || !req.body.resetcode || !req.body.password || !usernameRegex.test(req.body.username)){
+        console.log("Bad request for password reset with code")
+        res.status(400) // bad request
+        res.send("Please specify username, password and reset code")
+        res.end()
+        return;
+    }
+    id = get_id(connection, req.body.username)
+    // get and decrypt code
+    getToken(function(err, token){
+        if (err){
+            console.log("Error getting token")
+            res.status(500) // server error
+            res.send("Error")
+            end()
+        } else {
+            if (token != req.body.resetcode){
+                console.log("Bad reset token")
+                res.status(401) // unauthorized
+                res.send("Incorrect code")
+                res.end()
+                return;
+            }
+            // all good, set password and delete token
+            connection.query("UPDATE users SET PASS=?, RESET=?, RESET_IV=? WHERE ID=?",
+            [md5(req.body.username+req.body.password), 0, 0, id],
+            function(err){
+                if (err){
+                    console.log("Error updating password")
+                    res.status(500) // server error
+                    res.send("Error")
+                    end()
+                } else {
+                    console.log("password reset for user "+req.body.username)
+                    res.send("Success! Password updated")
+                    res.end()
+                }
+            })
+        }
+    })
+})
 
 app.listen(process.env.PORT || 5000);
