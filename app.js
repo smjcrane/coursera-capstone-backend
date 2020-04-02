@@ -54,16 +54,20 @@ const apiLimiter2 = rateLimit({
 })
 
 const usernameRegex = /^[A-Za-z0-9]{3,30}$/
-const messageRegex = /^[A-Za-z0-9 ]{1,999}$/
+const messageRegex = /^[A-Za-z0-9 \\\^\-!"£$%&*()#';?.>,<|/`\n€]{1,999}$/
   
 app.use(apiLimiter)
 
 app.use(session({
-    cookie: {maxAge: 86400000},
+    cookie: {
+        maxAge: 86400000,
+        secure: true,
+        sameSite: "none"
+    },
     store: new MemoryStore({
         checkPeriod: 86400000
     }),
-	secret: 'secr83kcuby4bl7sq5wffdypijaem3oncqet',
+	secret: process.env.SESSION_SECRET,
 	resave: true,
 	saveUninitialized: true
 }));
@@ -206,7 +210,7 @@ app.post("/logout", function (request, response){
 app.post("/send", function(request, response){
     var to_user = request.body.to_user;
     var contents = request.body.content;
-    console.log("Sending message ["+contents+"] to user "+to_user)
+    console.log("Sending message from user "+request.session.username+" to user "+to_user)
     if((!request.session.username) || (!request.session.userid)){
         console.log("send failed: not logged in")
         response.send("Please log in")
@@ -214,9 +218,9 @@ app.post("/send", function(request, response){
         return;
     }
     if ((!to_user || !contents)){
-        console.log("No addressee or no message")
+        console.log("No recipient or no message")
         response.status(400)
-		response.send('Please send the addressees username and the message');
+		response.send('Please send the recipient username and the message');
         response.end();    
     }
     if (!usernameRegex.test(to_user) || !messageRegex.test(contents)){
