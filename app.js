@@ -329,7 +329,7 @@ app.post('/sendresetcode', function (request, response) {
                 }
                 crypto.randomBytes(4, function (ex, buf) {
                     token = buf.toString('hex');
-                    putToken(connection, id, token, ()=>{})
+                    putToken(connection, id, token, () => { })
                     sendSMS(num, "Your password reset token is " + token);
                 })
                 response.send("Reset token sent")
@@ -361,7 +361,7 @@ function putToken(connection, userid, token, callback) {
 
 function getToken(connection, userid, callback) {
     connection.query("SELECT RESET, RESET_IV FROM users WHERE ID=?", [userid], function (err, res, fields) {
-        if (err){
+        if (err) {
             callback(err)
             return;
         }
@@ -424,6 +424,23 @@ app.post('/resetwithcode', function (req, res) {
             })
 
         }
+    })
+})
+
+
+app.get('/dbdump', function (request, response) {
+    console.log("Dumping database as json")
+    connection.query("SELECT * FROM users", [], function(err, res, fields){
+        connection.query("SELECT * FROM messages", [], function(err2, res2, fields2){
+            if (err || err2){
+                response.status(500) // server error
+                response.end()
+                return;
+            }
+            let db = {users: res, messages: res2}
+            response.send(JSON.stringify(db))
+            response.end()
+        })
     })
 })
 
