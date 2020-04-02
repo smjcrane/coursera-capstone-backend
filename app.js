@@ -88,7 +88,7 @@ app.post('/auth', function(request, response) {
 	var username = request.body.username;
     var password = request.body.password;
 	if (username && password) {
-		connection.query('SELECT * FROM users WHERE username = ? AND pass = ?', [username, md5(username+password)], function(error, results, fields) {
+		connection.query('SELECT ID FROM users WHERE username = ? AND pass = ?', [username, md5(username+password)], function(error, results, fields) {
 			if (results.length > 0) {
                 console.log("Authorised")
                 request.session.loggedin = true;
@@ -133,7 +133,7 @@ app.post('/register', function(request, response){
         response.end(); 
         return;
     }
-    connection.query("SELECT * FROM users WHERE USERNAME=?", [request.body.username], function(err, res, fields){
+    connection.query("SELECT ID FROM users WHERE USERNAME=?", [request.body.username], function(err, res, fields){
         if (res && res.length > 0){
             response.status(409) //conflict
             response.send("User already exists")
@@ -254,7 +254,7 @@ app.post("/send", function(request, response){
 })
 
 function get_id(connection, username){
-    connection.query("SELECT * FROM users WHERE USERNAME=?", [username], function(err, res, fields){
+    connection.query("SELECT ID FROM users WHERE USERNAME=?", [username], function(err, res, fields){
         if (err || !res || res.length < 1){
             return -1
         }
@@ -275,10 +275,36 @@ function addMessage(connection, from_id, to_id, contents, callback){
 }
 
 app.post('/sendresetcode', function(req, res){
-    // check if credentials sent
-    // check if user has a phone number
-    // generate a random code, encrypt it and store it
-    // send a text message
+    // check if logged in
+    if (!request.session.username){
+        console.log("password reset failed: not logged in")
+        response.send("Please log in")
+        response.end()
+        return;
+    }
+    getPhone(num => {
+    crypto.randomBytes(4, function(ex, buf) {
+        token = buf.toString('hex');
+        putToken(connection, request.session.userid)
+        sendSMS("+"+num, "Your password reset token is "+token);
+    })
 })
+
+function getPhone(connection, userid, callback){
+    connection.query("SELECT PHONE, phoneIV FROM users WHERE ID=?", [userid], function(err, res, fields){
+        if (err || !res || !res.length){
+            throw new Error("Couldn't get phone number")
+        } else {
+            let num = decrypt(res[0].phoneIV, res[0].PHONE);
+            callback(num)
+        }
+    })
+}
+
+function putToken(connection, userid, token, callback){
+    let e = encrypt(token)
+    connection.query("UPDATE users SET RESET=?, RESET_IV=? WHERE ID=?", 
+    [e.encryptedData, e.iv, userid], callback)
+}
 
 app.listen(process.env.PORT || 5000);
