@@ -329,7 +329,7 @@ app.post('/sendresetcode', function (request, response) {
                 }
                 crypto.randomBytes(4, function (ex, buf) {
                     token = buf.toString('hex');
-                    putToken(connection, request.session.userid, token, ()=>{})
+                    putToken(connection, id, token, ()=>{})
                     sendSMS(num, "Your password reset token is " + token);
                 })
                 response.send("Reset token sent")
