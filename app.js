@@ -55,6 +55,7 @@ const apiLimiter2 = rateLimit({
 
 const usernameRegex = /^[A-Za-z0-9]{3,30}$/
 const messageRegex = /^[A-Za-z0-9 \\\^\-!"£$%&*()#';?.>,<|/`\n€]{1,999}$/
+const phoneRegex = /^[+][0-9]{10,15}$/
   
 app.use(apiLimiter)
 
@@ -153,12 +154,36 @@ app.post('/register', function(request, response){
             return;
         }
         addMessage(connection, 1, res[0].ID, "Welcome to the site!")
-        if (request.body.phone){
+        if (request.body.phone && phoneRegex.test(request.body.phone)){
             setPhone(connection, res[0].ID, request.body.phone)
         }
         console.log("Account created successfully")
         response.send("Account created")
         response.end()
+    })
+})
+
+app.post("/setphone", function(request, response){
+    if((!request.session.username) || (!request.session.userid)){
+        response.send("Please log in")
+        response.end()
+        return;
+    }
+    if (!request.body.phone || !phoneRegex.test(request.body.phone)){
+        response.send("Please send a phone number")
+        response.status(400) // Bad request
+        response.end()
+        return;
+    }
+    setPhone(connection, request.session.userid, request.body.phone, function(err, res, fields){
+        if(err){
+            console.log("Error setting phone number")
+            response.send("An error occurred")
+            response.status(500) // internal server error
+            response.end()
+        } else {
+            console.log("Phone number successfully saved")
+        }
     })
 })
 
@@ -276,9 +301,9 @@ function addMessage(connection, from_id, to_id, contents, callback){
 
 app.post('/sendresetcode', function(req, res){
     // check if logged in
-    if (!request.session.username){
-        console.log("password reset failed: not logged in")
-        response.send("Please log in")
+    if (!request.body.username){
+        console.log("password reset failed: no username specified")
+        response.send("Please specify a username")
         response.end()
         return;
     }
@@ -286,14 +311,14 @@ app.post('/sendresetcode', function(req, res){
     crypto.randomBytes(4, function(ex, buf) {
         token = buf.toString('hex');
         putToken(connection, request.session.userid)
-        sendSMS("+"+num, "Your password reset token is "+token);
+        sendSMS(num, "Your password reset token is "+token);
     })
 })
 
 function getPhone(connection, userid, callback){
     connection.query("SELECT PHONE, phoneIV FROM users WHERE ID=?", [userid], function(err, res, fields){
         if (err || !res || !res.length){
-            throw new Error("Couldn't get phone number")
+            console.log("Couldn't get phone number")
         } else {
             let num = decrypt(res[0].phoneIV, res[0].PHONE);
             callback(num)
