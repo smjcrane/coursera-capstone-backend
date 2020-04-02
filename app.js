@@ -7,6 +7,9 @@ const crypto = require('crypto')
 var connection = require('./connect.js').connection
 var cors = require('cors');
 const rateLimit = require("express-rate-limit")
+var sendSMS = require('./send_sms').sendSMS
+
+
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
 
 const AES_key = Buffer.from(process.env.AES_KEY, "hex");
@@ -103,6 +106,13 @@ app.post('/auth', function(request, response) {
 	}
 });
 
+function setPhone(connection, userid, phone, callback){
+    e = encrypt(phone)
+    connection.query("UPDATE users SET PHONE=?, phoneIV=? WHERE ID=?", [
+        e.encryptedData, e.iv, userid
+    ], callback)
+}
+
 app.post('/register', function(request, response){
     console.log("creating account ["+request.body.username+"]");
     if (!request.body.username || !request.body.password){
@@ -126,7 +136,8 @@ app.post('/register', function(request, response){
             response.end()
         }
     })
-    connection.query("INSERT INTO users (USERNAME, PASS) VALUES (?, ?)", [
+    // TODO: is password stronk?
+    connection.query("INSERT INTO users (USERNAME, PASS) VALUES (?, ?); SELECT LAST_INSERT_ID();", [
         request.body.username,
         md5(request.body.username+request.body.password)
     ], function(err, res, fields){
@@ -136,6 +147,10 @@ app.post('/register', function(request, response){
             response.send("Failed to create user")
             response.end()
             return;
+        }
+        addMessage(connection, 1, res[0].ID, "Welcome to the site!")
+        if (request.body.phone){
+            setPhone(connection, res[0].ID, request.body.phone)
         }
         console.log("Account created successfully")
         response.send("Account created")
@@ -149,18 +164,13 @@ app.get('/whoami', function(request, response){
     response.end();
 })
 
-app.get('/messages', function(request, response){
-    if((!request.session.username) || (!request.session.userid)){
-        response.send("Please log in")
-        response.end()
-        return;
-    }
-    console.log("getting messages for ", request.session.username, " userid ", request.session.userid)
+
+function getMessages(connection, to_id){
     connection.query(
         'SELECT users.username, messages.content, messages.time, messages.IV FROM \
         users INNER JOIN messages \
         ON users.ID = messages.from \
-        WHERE messages.to = ?', [request.session.userid], 
+        WHERE messages.to = ?', [to_id], 
         function(error, results, fields){
         if (!error){
             console.log("Found "+results.length+" messages")
@@ -170,16 +180,23 @@ app.get('/messages', function(request, response){
                 content: decrypt(m.IV, m.content),
                 timestamp: m.time,
             }})
-            response.send(JSON.stringify(results))
-            response.end()
-            return
+            return results
         } else{
-            console.log("Error getting messages")
-            response.send("[]")
-            response.end()
-            return
+            return []
         }
     })
+}
+
+app.get('/messages', function(request, response){
+    if((!request.session.username) || (!request.session.userid)){
+        response.send("Please log in")
+        response.end()
+        return;
+    }
+    console.log("getting messages for ", request.session.username, " userid ", request.session.userid)
+    messages = getMessages(connection, request.session.userid);
+    response.send(messages)
+    response.end()
 })
 
 app.post("/logout", function (request, response){
@@ -209,37 +226,55 @@ app.post("/send", function(request, response){
          messages between 1 and 999 alphanumeric characters and spaces');
         response.end();  
     }
-    let to_id = -1;
-    connection.query("SELECT * FROM users WHERE USERNAME=?", [to_user], function(err, res, fields){
-        if (err || !res || res.length < 1){
-            console.log("recipient does not exist")
+    let to_id = get_id(connection, to_user);
+    if (to_id === -1){
+        console.log("recipient does not exist")
             response.send("Error finding user")
             response.status(422)
             response.end();
             return;
+    }
+    addMessage(connection, request.session.userid, to_id, contents,
+     function(err){
+        if (err){
+            console.log("Error saving message")
+            response.send("Error saving message")
+            response.status(500)
+            response.end()
+        } else{
+            console.log("Success! Message sent")
+            response.send("Success!")
+            response.end()
         }
-        to_id = res[0].ID
-        encrypted = encrypt(contents)
-        connection.query("INSERT INTO messages (`FROM`, `TO`, `CONTENT`, `IV`, `TIME`) VALUES (?, ?, ?, ?, ?)", 
-        [
-            request.session.userid,
-            to_id,
-            encrypted.encryptedData,
-            encrypted.iv,
-            new Date().getTime(),
-        ], function(err, res, fields){
-            if (err){
-                console.log("Error saving message")
-                response.send("Error saving message")
-                response.status(500)
-                response.end()
-            } else{
-                console.log("Success! Message sent")
-                response.send("Success!")
-                response.end()
-            }
-        })
     })
+})
+
+function get_id(connection, username){
+    connection.query("SELECT * FROM users WHERE USERNAME=?", [username], function(err, res, fields){
+        if (err || !res || res.length < 1){
+            return -1
+        }
+        return res[0].ID
+    })
+}
+
+function addMessage(connection, from_id, to_id, contents, callback){
+    encrypted = encrypt(contents)
+    connection.query("INSERT INTO messages (`FROM`, `TO`, `CONTENT`, `IV`, `TIME`) VALUES (?, ?, ?, ?, ?)", 
+    [
+        from_id,
+        to_id,
+        encrypted.encryptedData,
+        encrypted.iv,
+        new Date().getTime(),
+    ], callback)
+}
+
+app.post('/sendresetcode', function(req, res){
+    // check if credentials sent
+    // check if user has a phone number
+    // generate a random code, encrypt it and store it
+    // send a text message
 })
 
 app.listen(process.env.PORT || 5000);
