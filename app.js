@@ -8,6 +8,10 @@ var connection = require('./connect.js').connection
 var cors = require('cors');
 const rateLimit = require("express-rate-limit")
 var sendSMS = require('./send_sms').sendSMS
+var passManager = require('./passwords.js')
+
+const putPass = passManager.putPass;
+const comparePass = passManager.comparePass;
 
 
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
@@ -88,19 +92,29 @@ app.post('/auth', function (request, response) {
     var username = request.body.username;
     var password = request.body.password;
     if (username && password) {
-        connection.query('SELECT ID FROM users WHERE username = ? AND pass = ?', [username, md5(username + password)], function (error, results, fields) {
+        connection.query('SELECT ID FROM users WHERE username = ?', [username], function (error, results, fields) {
             if (results.length > 0) {
-                console.log("Authorised")
-                console.log(results)
-                request.session.userid = results[0].ID
-                request.session.username = username;
-                response.send("Success!");
+                comparePass(connection, results[0].ID, password, function(success){
+                    if (success){
+                        console.log("Authorised")
+                        console.log(results)
+                        request.session.userid = results[0].ID
+                        request.session.username = username;
+                        response.send("Success!");
+                        response.end()
+                    } else {
+                        console.log("Not authorised")
+                        response.status(401)
+                        response.send('Incorrect Username and/or Password!');
+                        response.end()
+                    }
+                })
             } else {
                 console.log("Not authorised")
                 response.status(401)
                 response.send('Incorrect Username and/or Password!');
+                response.end();
             }
-            response.end();
         });
     } else {
         console.log("Bad request")
@@ -141,9 +155,9 @@ app.post('/register', function (request, response) {
         }
     })
     // TODO: is password stronk?
-    connection.query("INSERT INTO users (USERNAME, PASS) VALUES (?, ?)", [
-        request.body.username,
-        md5(request.body.username + request.body.password)
+    console.log("adding username")
+    connection.query("INSERT INTO users (USERNAME) VALUES (?)", [
+        request.body.username
     ], function (err, res, fields) {
         if (err) {
             console.log("Failed to create user")
@@ -153,13 +167,24 @@ app.post('/register', function (request, response) {
             return;
         }
         connection.query("SELECT ID FROM users WHERE USERNAME=?", [request.body.username], function (err, res, fields) {
-            addMessage(connection, 1, res[0].ID, "Welcome to the site!")
-            if (request.body.phone && phoneRegex.test(request.body.phone)) {
-                setPhone(connection, res[0].ID, request.body.phone)
-            }
-            console.log("Account created successfully")
-            response.send("Account created")
-            response.end()
+            console.log("adding password")
+            putPass(connection, res[0].ID, request.body.password, function(err){
+                if (!err){
+                    addMessage(connection, 1, res[0].ID, "Welcome to the site!")
+                    if (request.body.phone && phoneRegex.test(request.body.phone)) {
+                        setPhone(connection, res[0].ID, request.body.phone)
+                    }
+                    console.log("Account created successfully")
+                    response.send("Account created")
+                    response.end()
+                } else {
+                    console.log("Password thing failed")
+                    connection.query("DELETE FROM users WHERE ID=?", [res[0].ID])
+                    response.status(500)
+                    response.end()
+                }
+            })
+            
         })
     })
 })
