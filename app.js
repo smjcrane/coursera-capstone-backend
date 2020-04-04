@@ -9,6 +9,7 @@ var cors = require('cors');
 const rateLimit = require("express-rate-limit")
 var sendSMS = require('./send_sms').sendSMS
 var passManager = require('./passwords.js')
+var MySQLStore = require('express-mysql-session')(session);
 
 const putPass = passManager.putPass;
 const comparePass = passManager.comparePass;
@@ -68,12 +69,10 @@ app.use(session({
         maxAge: 86400000,
         sameSite: "none"
     },
-    store: new MemoryStore({
-        checkPeriod: 86400000
-    }),
     secret: process.env.SESSION_SECRET,
     resave: true,
-    saveUninitialized: true
+    saveUninitialized: true,
+    store: new MySQLStore({}, connection)
 }));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
