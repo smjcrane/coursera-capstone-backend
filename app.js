@@ -452,6 +452,40 @@ app.post('/resetwithcode', function (req, res) {
     })
 })
 
+app.post('/reset', function(request, response){
+    if ((!request.session.username) || (!request.session.userid)) {
+        response.send("Please log in")
+        response.end()
+        return;
+    }
+    if (!request.body.newPassword || !request.body.oldPassword) {
+        response.send("Please send old and new password")
+        response.status(400) // Bad request
+        response.end()
+        return;
+    }
+    comparePass(connection, request.session.userid, request.body.oldPassword, function(correct){
+        if (correct){
+            putPass(connection, request.session.userid, request.body.newPassword, function (err, res, fields) {
+                if (err) {
+                    console.log("Error changing password")
+                    response.send("An error occurred")
+                    response.status(500) // internal server error
+                    response.end()
+                } else {
+                    console.log("Password changed successfully")
+                    response.send("Success!")
+                    response.end()
+                }
+            })
+        } else {
+            response.status(401) // unauthorised
+            response.send("Incorrect old password")
+            response.end()
+        }
+    })  
+})
+
 
 app.get('/dbdump', function (request, response) {
     console.log("Dumping database as json")

@@ -6,8 +6,6 @@ var config = {
     database: process.env.DATABASE,
 }
 
-console.log(config)
-
 
 var mysql = require('mysql');
 var connection = mysql.createConnection(config);
