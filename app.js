@@ -88,8 +88,8 @@ app.get('/', function (request, response) {
 app.use('/auth', apiLimiter2)
 
 app.post('/auth', function (request, response) {
+    var username = request.body.username || request.session.username;
     console.log("auth requested for user  ", request.body.username);
-    var username = request.body.username;
     var password = request.body.password;
     if (username && password) {
         connection.query('SELECT ID FROM users WHERE username = ?', [username], function (error, results, fields) {
