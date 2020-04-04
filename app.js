@@ -89,7 +89,7 @@ app.use('/auth', apiLimiter2)
 
 app.post('/auth', function (request, response) {
     var username = request.body.username || request.session.username;
-    console.log("auth requested for user  ", request.body.username);
+    console.log("auth requested for user", username);
     var password = request.body.password;
     if (username && password) {
         connection.query('SELECT ID FROM users WHERE username = ?', [username], function (error, results, fields) {
@@ -317,7 +317,6 @@ function get_id(connection, username, callback) {
         callback(res[0].ID)
     })
 }
-
 
 function addMessage(connection, from_id, to_id, contents, callback) {
     encrypted = encrypt(contents)
