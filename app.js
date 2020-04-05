@@ -188,6 +188,8 @@ app.post('/register', function (request, response) {
     })
 })
 
+
+app.use('/setphone', apiLimiter2)
 app.post("/setphone", function (request, response) {
     if ((!request.session.username) || (!request.session.userid)) {
         response.send("Please log in")
@@ -370,6 +372,10 @@ function getPhone(connection, userid, callback) {
             console.log("Couldn't get phone number")
             callback(new Error(), -1)
         } else {
+            if (res[0].PHONE === null){
+                callback(null, -1)
+                return;
+            }
             let num = decrypt(res[0].phoneIV, res[0].PHONE);
             callback(null, num)
         }
@@ -450,6 +456,7 @@ app.post('/resetwithcode', function (req, res) {
     })
 })
 
+app.use('/reset', apiLimiter2)
 app.post('/reset', function(request, response){
     if ((!request.session.username) || (!request.session.userid)) {
         response.send("Please log in")
@@ -484,6 +491,40 @@ app.post('/reset', function(request, response){
     })  
 })
 
+app.use('/getphone', apiLimiter2)
+app.post('/getphone', function(request, response){
+    if ((!request.session.username) || (!request.session.userid)) {
+        response.send("Please log in")
+        response.end()
+        return;
+    }
+    if (!request.body.password) {
+        response.send("Please send password")
+        response.status(400) // Bad request
+        response.end()
+        return;
+    }
+    comparePass(connection, request.session.userid, request.body.oldPassword, function(correct){
+        if (correct){
+            getPhone(connection, request.session.userid, function (err, num) {
+                if (err) {
+                    console.log("Error getting phone number")
+                    response.send("An error occurred")
+                    response.status(500) // internal server error
+                    response.end()
+                } else {
+                    console.log("Success getting phone number")
+                    response.send(JSON.stringify({phone: num}))
+                    response.end()
+                }
+            })
+        } else {
+            response.status(401) // unauthorised
+            response.send("Incorrect password")
+            response.end()
+        }
+    })  
+})
 
 app.get('/dbdump', function (request, response) {
     console.log("Dumping database as json")
