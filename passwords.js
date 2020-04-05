@@ -19,7 +19,6 @@ function comparePass(connection, userid, password, callback){
         } else {
             crypto.pbkdf2(password, res[0].salt, iterations, keylen, 'sha512',function(err, bcryptedPassword) {
                 let hash = (bcryptedPassword.toString('base64'));
-                console.log("hash", hash)
                 callback(hash === res[0].PASS)
             });
         }

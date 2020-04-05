@@ -1,6 +1,5 @@
 var express = require('express');
 var session = require('express-session');
-var MemoryStore = require('memorystore')(session)
 var bodyParser = require('body-parser');
 var path = require('path');
 const crypto = require('crypto')
@@ -10,9 +9,9 @@ const rateLimit = require("express-rate-limit")
 var sendSMS = require('./send_sms').sendSMS
 var passManager = require('./passwords.js')
 var MySQLStore = require('express-mysql-session')(session);
-
 const putPass = passManager.putPass;
 const comparePass = passManager.comparePass;
+const captcha = require('./captcha.js')
 
 
 let md5 = (str) => crypto.createHash('md5').update(str).digest("hex")
@@ -84,8 +83,18 @@ app.get('/', function (request, response) {
     response.end();
 });
 
-app.use('/auth', apiLimiter2)
+function mustBeLoggedIn(req, res, next){
+    if ((!req.session.username) || (!req.session.userid)) {
+        res.status(401)
+        res.send("Please log in")
+        res.end()
+        return;
+    }
+}
 
+
+app.use('/auth', apiLimiter2)
+app.use('/auth', captcha.checkCaptcha)
 app.post('/auth', function (request, response) {
     var username = request.body.username || request.session.username;
     console.log("auth requested for user", username);
@@ -130,6 +139,7 @@ function setPhone(connection, userid, phone, callback) {
     ], callback)
 }
 
+app.use('/register', captcha.checkCaptcha)
 app.post('/register', function (request, response) {
     console.log("creating account [" + request.body.username + "]");
     if (!request.body.username || !request.body.password) {
@@ -190,12 +200,9 @@ app.post('/register', function (request, response) {
 
 
 app.use('/setphone', apiLimiter2)
+app.use('/setphone', mustBeLoggedIn)
+app.use('/setphone', captcha.checkCaptcha)
 app.post("/setphone", function (request, response) {
-    if ((!request.session.username) || (!request.session.userid)) {
-        response.send("Please log in")
-        response.end()
-        return;
-    }
     if (!request.body.phone || !phoneRegex.test(request.body.phone)) {
         response.send("Please send a phone number")
         response.status(400) // Bad request
@@ -246,12 +253,9 @@ function getMessages(connection, to_id, to_name, callback) {
         })
 }
 
+
+app.use('/messages', mustBeLoggedIn)
 app.get('/messages', function (request, response) {
-    if ((!request.session.username) || (!request.session.userid)) {
-        response.send("Please log in")
-        response.end()
-        return;
-    }
     console.log("getting messages for ", request.session.username, " userid ", request.session.userid)
     getMessages(connection, request.session.userid, request.session.username, messages => {
         response.send(JSON.stringify(messages))
@@ -263,16 +267,12 @@ app.post("/logout", function (request, response) {
     request.session.destroy();
 })
 
+app.use('/send', mustBeLoggedIn)
+app.use('/send', captcha.checkCaptcha)
 app.post("/send", function (request, response) {
     var to_user = request.body.to_user;
     var contents = request.body.content;
     console.log("Sending message from user " + request.session.username + " to user " + to_user)
-    if ((!request.session.username) || (!request.session.userid)) {
-        console.log("send failed: not logged in")
-        response.send("Please log in")
-        response.end()
-        return;
-    }
     if ((!to_user || !contents)) {
         console.log("No recipient or no message")
         response.status(400)
@@ -332,6 +332,7 @@ function addMessage(connection, from_id, to_id, contents, callback) {
 
 
 app.use('/sendresetcode', apiLimiter2);
+app.use('/sendresetcode', captcha.checkCaptcha)
 app.post('/sendresetcode', function (request, response) {
     if (!request.body.username) {
         console.log("password reset failed: no username specified")
@@ -395,7 +396,7 @@ function getToken(connection, userid, callback) {
             return;
         }
         console.log("res", res)
-        if (err || !res || !res.length) {
+        if (err || !res || !res.length || res[0].RESET == "0" || res[0].RESET == null) {
             callback(new Error())
         } else {
             token = decrypt(res[0].RESET_IV, res[0].RESET)
@@ -405,6 +406,7 @@ function getToken(connection, userid, callback) {
 }
 
 app.use('/resetwithcode', apiLimiter2)
+app.use('/resetwithcode', captcha.checkCaptcha)
 app.post('/resetwithcode', function (req, res) {
     if (!req.body.username || !req.body.resetcode || !req.body.password || !usernameRegex.test(req.body.username)) {
         console.log("Bad request for password reset with code")
@@ -435,20 +437,29 @@ app.post('/resetwithcode', function (req, res) {
                         return;
                     }
                     // all good, set password and delete token
-                    connection.query("UPDATE users SET PASS=?, RESET=?, RESET_IV=? WHERE ID=?",
-                        [md5(req.body.username + req.body.password), 0, 0, id],
-                        function (err) {
-                            if (err) {
-                                console.log("Error updating password")
-                                res.status(500) // server error
-                                res.send("Error")
-                                res.end()
-                            } else {
-                                console.log("password reset for user " + req.body.username)
-                                res.send("Success! Password updated")
-                                res.end()
-                            }
-                        })
+                    putPass(connection, id, req.body.password, function(success){
+                        if (success){
+                            connection.query("UPDATE users SET RESET=?, RESET_IV=? WHERE ID=?",
+                            [0, 0, id],
+                            function (err) {
+                                if (err) {
+                                    console.log("Error updating password")
+                                    res.status(500) // server error
+                                    res.send("Error")
+                                    res.end()
+                                } else {
+                                    console.log("password reset for user " + req.body.username)
+                                    res.send("Success! Password updated")
+                                    res.end()
+                                }
+                            })
+                        } else {
+                            console.log("Error updating password")
+                                    res.status(500) // server error
+                                    res.send("Error")
+                                    res.end()
+                        }
+                    })
                 }
             })
 
@@ -457,12 +468,9 @@ app.post('/resetwithcode', function (req, res) {
 })
 
 app.use('/reset', apiLimiter2)
+app.use('/reset', mustBeLoggedIn)
+app.use('/reset', captcha.checkCaptcha)
 app.post('/reset', function(request, response){
-    if ((!request.session.username) || (!request.session.userid)) {
-        response.send("Please log in")
-        response.end()
-        return;
-    }
     if (!request.body.newPassword || !request.body.oldPassword) {
         response.send("Please send old and new password")
         response.status(400) // Bad request
@@ -492,12 +500,9 @@ app.post('/reset', function(request, response){
 })
 
 app.use('/getphone', apiLimiter2)
+app.use('/getphone', mustBeLoggedIn)
+app.use('/getphone', captcha.checkCaptcha)
 app.post('/getphone', function(request, response){
-    if ((!request.session.username) || (!request.session.userid)) {
-        response.send("Please log in")
-        response.end()
-        return;
-    }
     if (!request.body.password) {
         response.send("Please send password")
         response.status(400) // Bad request
