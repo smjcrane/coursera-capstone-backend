@@ -35,12 +35,16 @@ function decrypt(iv, text) {
     return decrypted.toString();
 }
 
-const frontend_home = 'https://simon-security-capstone.herokuapp.com';
+const frontend_homes = ['https://simon-security-capstone.herokuapp.com', 'https://coursera-capstone-frontend.now.sh'];
 var app = express();
 
 const corsOptions = function (request, callback) {
     origin = request.header("Origin") || "no";
-    if (origin.substring(0, frontend_home.length) == frontend_home) {
+    if (origin.substring(0, frontend_homes[1].length) == frontend_homes[1]) {
+        console.log("Allowing cors from zeit")
+        callback(null, { origin: true, credentials: true })
+    } else if (origin.substring(0, frontend_homes[0].length) == frontend_homes[0]) {
+        console.log("Allowing cors from heroku")
         callback(null, { origin: true, credentials: true })
     } else {
         callback(new Error('Not allowed by CORS'))
