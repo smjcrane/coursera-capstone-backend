@@ -90,6 +90,7 @@ function mustBeLoggedIn(req, res, next){
         res.end()
         return;
     }
+    next();
 }
 
 
